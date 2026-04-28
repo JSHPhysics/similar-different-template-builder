@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Similar / Different Template</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+    background: #fafafa;
+    color: #1a1a1a;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 24px 12px; }
+  header h1 { margin: 0; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: #777; font-size: 0.85rem; }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #e6e6e6;
+    border-radius: 10px;
+    padding: 18px;
+    margin-top: 18px;
+  }
+
+  .controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .controls-grid .row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #555;
+  }
+  input[type=text], input[type=number] {
+    font-family: inherit;
+    font-size: 0.95rem;
+    padding: 9px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    color: #1a1a1a;
+  }
+  input:focus { outline: none; border-color: #1a1a1a; }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .group {
+    display: inline-flex;
+    background: #f3f3f3;
+    border-radius: 8px;
+    padding: 3px;
+  }
+  .group button {
+    background: transparent;
+    color: #555;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .group button.active {
+    background: #1a1a1a;
+    color: #fff;
+  }
+  .actions > button {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 8px 14px;
+    background: #1a1a1a;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .actions > button.secondary {
+    background: #fff;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+  }
+  .actions > button.ok { background: #2e7d4f; }
+  .spacer { flex: 1; }
+  .hint { font-size: 0.8rem; color: #888; }
+
+  .template-wrapper {
+    margin-top: 18px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .template {
+    position: relative;
+    width: 1123px;
+    height: 794px;
+    background: #fff;
+    border: 1px solid #d8d8d8;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .template svg.bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .cards {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .card {
+    position: absolute;
+    border: 1.2px solid #777;
+    border-radius: 6px;
+    background-color: #fcfcfc;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 29px,
+      #d6d6d6 29px,
+      #d6d6d6 30px
+    );
+    background-position: 0 -2px;
+    overflow: hidden;
+    pointer-events: auto;
+  }
+  .card-content {
+    width: 100%;
+    height: 100%;
+    outline: none;
+    border: none;
+    background: transparent;
+    font-family: 'Nunito', sans-serif;
+    font-size: 17px;
+    line-height: 30px;
+    color: #1a1a1a;
+    padding: 5px 14px 0;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .draw-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    touch-action: none;
+  }
+  .draw-canvas.active {
+    pointer-events: auto;
+    cursor: crosshair;
+  }
+  .draw-canvas.active.eraser {
+    cursor: cell;
+  }
+  .draw-tools {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .draw-tools.hidden { display: none; }
+  .actions > button:disabled,
+  .actions .secondary:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* Print: only the template, A4 landscape, preserve backgrounds */
+  @media print {
+    body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .wrap > header,
+    .wrap > .panel,
+    .modal-overlay { display: none !important; }
+    .template-wrapper { margin: 0; padding: 0; overflow: visible; }
+    .template { border: none; }
+    @page { size: A4 landscape; margin: 1cm; }
+  }
+
+  /* Modal overlay (purpose & export) */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 15, 15, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 26px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .modal h2 {
+    margin: 0 0 8px;
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+  .modal p {
+    margin: 0 0 18px;
+    color: #666;
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+  .modal-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .modal-options button {
+    padding: 12px 16px;
+    text-align: left;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    color: #1a1a1a;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .modal-options button:hover {
+    background: #f5f5f5;
+    border-color: #999;
+  }
+  .modal-options button .sub {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: #888;
+    margin-top: 2px;
+  }
+  .modal-footer {
+    margin-top: 14px;
+    text-align: right;
+  }
+  .modal-footer button {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .modal-footer button:hover { color: #333; }
+
+  /* Setup indicator */
+  .setup-indicator {
+    margin-top: 10px;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: #777;
+  }
+  .setup-indicator strong { color: #1a1a1a; font-weight: 700; }
+  .setup-indicator button {
+    background: none;
+    border: none;
+    color: #1a1a1a;
+    font-size: 0.8rem;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+  }
+
+  /* Card count warning */
+  .warning {
+    grid-column: 1 / -1;
+    display: none;
+    margin-top: 4px;
+    padding: 10px 12px;
+    background: #fff8e1;
+    border: 1px solid #f0d56b;
+    border-radius: 6px;
+    color: #6b5a00;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+  .warning.show { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Similar / Different Template</h1>
+    <p>Joshua Stafford-Haworth</p>
+  </header>
+
+  <div class="panel">
+    <div class="controls-grid">
+      <label class="field">
+        Topic 1 (left)
+        <input type="text" id="topic1" value="Chemical stores of energy">
+      </label>
+      <label class="field">
+        Topic 2 (right)
+        <input type="text" id="topic2" value="Gravitational stores of energy">
+      </label>
+      <div class="row">
+        <label class="field">
+          Left cards (different)
+          <input type="number" id="leftN" value="3" min="0" max="6">
+        </label>
+        <label class="field">
+          Centre cards (similar)
+          <input type="number" id="centerN" value="3" min="0" max="6">
+        </label>
+        <label class="field">
+          Right cards (different)
+          <input type="number" id="rightN" value="3" min="0" max="6">
+        </label>
+      </div>
+      <div class="warning" id="cardWarning"></div>
+      <div class="setup-indicator">
+        Set up for: <strong id="purposeLabel">A4 printing</strong>
+        <button type="button" id="changePurposeBtn">change</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="actions">
+      <div class="group" role="group" aria-label="Input mode">
+        <button id="modeDraw" class="active" type="button">Draw</button>
+        <button id="modeType" type="button">Type</button>
+      </div>
+      <div class="draw-tools" id="drawTools">
+        <div class="group" role="group" aria-label="Drawing tool">
+          <button id="toolPen" class="active" type="button">Pen</button>
+          <button id="toolEraser" type="button">Eraser</button>
+        </div>
+        <button class="secondary" id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
+        <button class="secondary" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)">Redo</button>
+      </div>
+      <span class="hint" id="hintText">Apple Pencil &amp; finger draw ink. Toggle to Type for keyboard input or Scribble.</span>
+      <div class="spacer"></div>
+      <button class="secondary" type="button" id="clearBtn">Clear</button>
+      <button type="button" id="printBtn">Print / PDF</button>
+      <button type="button" id="copyBtn">Copy as image</button>
+    </div>
+  </div>
+
+  <div class="template-wrapper">
+    <div class="template" id="template">
+      <svg class="bg" id="bg" viewBox="0 0 1123 794" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="cards" id="cards"></div>
+      <canvas class="draw-canvas active" id="drawCanvas" width="1123" height="794"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- Initial purpose modal -->
+<div class="modal-overlay hidden" id="purposeModal">
+  <div class="modal">
+    <h2>What's this template for?</h2>
+    <p>Pick where the finished sheet will end up — this sets the right page size for export. You can change it later.</p>
+    <div class="modal-options">
+      <button type="button" data-purpose="digital">For digital use (OneNote)<span class="sub">Single-page PDF, custom landscape size that won't split across pages</span></button>
+      <button type="button" data-purpose="A3">For printing on A3<span class="sub">A3 landscape, large format</span></button>
+      <button type="button" data-purpose="A4">For printing on A4<span class="sub">A4 landscape, standard classroom size</span></button>
+      <button type="button" data-purpose="A5">For printing on A5<span class="sub">A5 landscape, compact</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="modal-overlay hidden" id="exportModal">
+  <div class="modal">
+    <h2>Export template</h2>
+    <p id="exportDescription">Currently set up for A4 printing.</p>
+    <div class="modal-options">
+      <button type="button" data-action="print">Print on paper<span class="sub" id="printSub">Opens a PDF in a new tab with the print dialog</span></button>
+      <button type="button" data-action="pdf">Save as PDF<span class="sub" id="pdfSub">Single-page landscape PDF for inserting into OneNote or other software</span></button>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="exportCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------- Layout constants ----------
+  const W = 1123, H = 794;          // A4 landscape at 96 DPI
+  const cardW = 230;
+  const padX = 35;
+  const topY = 30, botY = H - 50;
+  const captionY = H - 18;
+
+  // ---------- Output purpose configurations ----------
+  // Visual canvas stays at A4 aspect for all options; export dimensions differ.
+  const PURPOSES = {
+    digital: {
+      label: 'digital use (OneNote)',
+      // Custom landscape size, ~A4 aspect but slightly larger for crisp on-screen display
+      pdfFormat: [320, 226],   // mm, landscape
+      pageSizeCss: '320mm 226mm',
+      renderScale: 3,
+      isPaper: false,
+    },
+    A3: { label: 'A3 printing', pdfFormat: 'a3', pageSizeCss: 'A3 landscape', renderScale: 2, isPaper: true },
+    A4: { label: 'A4 printing', pdfFormat: 'a4', pageSizeCss: 'A4 landscape', renderScale: 2, isPaper: true },
+    A5: { label: 'A5 printing', pdfFormat: 'a5', pageSizeCss: 'A5 landscape', renderScale: 2, isPaper: true },
+  };
+  const PURPOSE_STORAGE_KEY = 'simdiff.purpose';
+  let currentPurpose = 'A4';
+
+  // ---------- State ----------
+  let drawMode = true;
+  let drawing = false;
+  let eraserMode = false;
+  let strokes = [];          // committed strokes
+  let redoStack = [];        // undone strokes available for redo
+  let currentStroke = null;  // stroke being drawn now
+  let lastX = 0, lastY = 0;
+
+  // ---------- Helpers ----------
+  const $ = id => document.getElementById(id);
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const escapeXml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escapeHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+  function getInputs() {
+    return {
+      topic1:  ($('topic1').value  || 'Topic 1').trim(),
+      topic2:  ($('topic2').value  || 'Topic 2').trim(),
+      leftN:   clamp(parseInt($('leftN').value,   10) || 0, 0, 6),
+      centerN: clamp(parseInt($('centerN').value, 10) || 0, 0, 6),
+      rightN:  clamp(parseInt($('rightN').value,  10) || 0, 0, 6),
+    };
+  }
+
+  function splitLabel(text) {
+    const words = text.split(/\s+/);
+    if (words.length <= 3) return [text];
+    const mid = Math.ceil(words.length / 2);
+    return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+  }
+
+  function colYs(n, cardH) {
+    if (n === 0) return [];
+    const total = botY - topY;
+    const gap = (total - n * cardH) / (n + 1);
+    return Array.from({ length: n }, (_, i) => topY + gap * (i + 1) + cardH * i);
+  }
+
+  // ---------- Render template ----------
+  function render() {
+    const { topic1, topic2, leftN, centerN, rightN } = getInputs();
+
+    const leftX   = padX;
+    const centerX = W / 2 - cardW / 2;
+    const rightX  = W - padX - cardW;
+    const label1X = (leftX + cardW + centerX) / 2;
+    const label2X = (centerX + cardW + rightX) / 2;
+    const labelY  = H / 2;
+
+    const maxN = Math.max(leftN, centerN, rightN, 1);
+    const availH = botY - topY;
+    const gapBetween = 12;
+    const cardH = Math.floor((availH - (maxN + 1) * gapBetween) / maxN);
+
+    const leftYs   = colYs(leftN,   cardH);
+    const centerYs = colYs(centerN, cardH);
+    const rightYs  = colYs(rightN,  cardH);
+
+    // ----- SVG background -----
+    let svg = '';
+    const stroke = `stroke="#9a9a9a" stroke-width="1.2"`;
+
+    leftYs.forEach(y => {
+      svg += `<line x1="${leftX + cardW}" y1="${y + cardH/2}" x2="${label1X}" y2="${labelY}" ${stroke}/>`;
+    });
+    centerYs.forEach(y => {
+      svg += `<line x1="${centerX}" y1="${y + cardH/2}" x2="${label1X}" y2="${labelY}" ${stroke}/>`;
+      svg += `<line x1="${centerX + cardW}" y1="${y + cardH/2}" x2="${label2X}" y2="${labelY}" ${stroke}/>`;
+    });
+    rightYs.forEach(y => {
+      svg += `<line x1="${rightX}" y1="${y + cardH/2}" x2="${label2X}" y2="${labelY}" ${stroke}/>`;
+    });
+
+    function centerLabel(x, y, text) {
+      const lines = splitLabel(text);
+      const fs = 18;
+      const lh = 22;
+      const totalH = lines.length * lh;
+      const maskW = 240, maskH = totalH + 14;
+      let s = `<rect x="${x - maskW/2}" y="${y - maskH/2}" width="${maskW}" height="${maskH}" fill="#ffffff"/>`;
+      const startY = y - totalH/2 + fs - 2;
+      lines.forEach((ln, i) => {
+        s += `<text x="${x}" y="${startY + i*lh}" text-anchor="middle" font-size="${fs}" font-weight="600" font-family="Nunito, sans-serif" fill="#1a1a1a">${escapeXml(ln)}</text>`;
+      });
+      return s;
+    }
+    svg += centerLabel(label1X, labelY, topic1);
+    svg += centerLabel(label2X, labelY, topic2);
+
+    svg += `<text x="${leftX + cardW/2}"   y="${captionY}" text-anchor="middle" font-size="15" font-family="Nunito, sans-serif" fill="#444">Different</text>`;
+    svg += `<text x="${centerX + cardW/2}" y="${captionY}" text-anchor="middle" font-size="15" font-family="Nunito, sans-serif" fill="#444">Similar</text>`;
+    svg += `<text x="${rightX + cardW/2}"  y="${captionY}" text-anchor="middle" font-size="15" font-family="Nunito, sans-serif" fill="#444">Different</text>`;
+
+    $('bg').innerHTML = svg;
+
+    // ----- Cards (preserve content across re-render) -----
+    const cardsContainer = $('cards');
+    const existing = {};
+    cardsContainer.querySelectorAll('.card-content').forEach(el => {
+      existing[el.dataset.id] = el.innerText;
+    });
+
+    function cardHtml(x, y, id) {
+      const val = existing[id] || '';
+      const editable = drawMode ? 'false' : 'true';
+      return `<div class="card" style="left:${x}px; top:${y}px; width:${cardW}px; height:${cardH}px;">
+        <div class="card-content" contenteditable="${editable}" data-id="${id}" spellcheck="true">${escapeHtml(val)}</div>
+      </div>`;
+    }
+
+    let html = '';
+    leftYs.forEach((y, i)   => html += cardHtml(leftX,   y, `L${i}`));
+    centerYs.forEach((y, i) => html += cardHtml(centerX, y, `C${i}`));
+    rightYs.forEach((y, i)  => html += cardHtml(rightX,  y, `R${i}`));
+    cardsContainer.innerHTML = html;
+  }
+
+  // ---------- Mode toggle ----------
+  function setMode(mode) {
+    drawMode = (mode === 'draw');
+    const canvas = $('drawCanvas');
+    canvas.classList.toggle('active', drawMode);
+    $('modeType').classList.toggle('active', !drawMode);
+    $('modeDraw').classList.toggle('active', drawMode);
+    $('drawTools').classList.toggle('hidden', !drawMode);
+    document.querySelectorAll('.card-content').forEach(el => {
+      el.setAttribute('contenteditable', drawMode ? 'false' : 'true');
+    });
+    $('hintText').textContent = drawMode
+      ? 'Apple Pencil & finger draw ink. Toggle to Type for keyboard input or Scribble.'
+      : 'Tap a card and type. Apple Pencil writes via iPadOS Scribble (handwriting → text).';
+  }
+
+  // ---------- Drawing layer ----------
+  const canvas = $('drawCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function getCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width  / rect.width;
+    const sy = canvas.height / rect.height;
+    return [(e.clientX - rect.left) * sx, (e.clientY - rect.top) * sy];
+  }
+
+  function strokeWidth(pressure, eraser) {
+    if (eraser) return 16;
+    const p = (typeof pressure === 'number' && pressure > 0 && pressure <= 1) ? pressure : 0.5;
+    return 1 + p * 3;
+  }
+
+  function setupContext(eraser) {
+    ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.fillStyle  = '#1a1a1a';
+    ctx.lineCap  = 'round';
+    ctx.lineJoin = 'round';
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (!drawMode) return;
+    e.preventDefault();
+    drawing = true;
+    const [x, y] = getCoords(e);
+    const pressure = e.pressure;
+
+    currentStroke = { points: [{ x, y, pressure }], eraser: eraserMode };
+    lastX = x;
+    lastY = y;
+
+    setupContext(eraserMode);
+    // Render a dot so a single tap leaves a mark
+    const w = strokeWidth(pressure, eraserMode);
+    ctx.beginPath();
+    ctx.arc(x, y, w / 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!drawing) return;
+    e.preventDefault();
+    const [x, y] = getCoords(e);
+    const pressure = e.pressure;
+
+    currentStroke.points.push({ x, y, pressure });
+
+    ctx.lineWidth = strokeWidth(pressure, eraserMode);
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    lastX = x;
+    lastY = y;
+  });
+
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+    canvas.addEventListener(ev, () => {
+      if (drawing && currentStroke && currentStroke.points.length > 0) {
+        strokes.push(currentStroke);
+        redoStack = [];
+        updateUndoRedoButtons();
+      }
+      drawing = false;
+      currentStroke = null;
+    })
+  );
+
+  // ---------- Tool, undo, redo ----------
+  function setTool(tool) {
+    eraserMode = (tool === 'eraser');
+    $('toolPen').classList.toggle('active', !eraserMode);
+    $('toolEraser').classList.toggle('active', eraserMode);
+    canvas.classList.toggle('eraser', eraserMode);
+  }
+
+  function undo() {
+    if (strokes.length === 0) return;
+    redoStack.push(strokes.pop());
+    redrawAll();
+    updateUndoRedoButtons();
+  }
+
+  function redo() {
+    if (redoStack.length === 0) return;
+    strokes.push(redoStack.pop());
+    redrawAll();
+    updateUndoRedoButtons();
+  }
+
+  function updateUndoRedoButtons() {
+    $('undoBtn').disabled = strokes.length === 0;
+    $('redoBtn').disabled = redoStack.length === 0;
+  }
+
+  function redrawAll() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    for (const stroke of strokes) drawStroke(stroke);
+  }
+
+  function drawStroke(stroke) {
+    setupContext(stroke.eraser);
+    const pts = stroke.points;
+    if (pts.length === 0) return;
+    if (pts.length === 1) {
+      const p = pts[0];
+      const w = strokeWidth(p.pressure, stroke.eraser);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, w / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    for (let i = 1; i < pts.length; i++) {
+      const p0 = pts[i - 1];
+      const p1 = pts[i];
+      ctx.lineWidth = strokeWidth(p1.pressure, stroke.eraser);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+  }
+
+  // ---------- Clear ----------
+  function clearAll() {
+    if (!confirm('Clear all written content and drawings?')) return;
+    strokes = [];
+    redoStack = [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.querySelectorAll('.card-content').forEach(el => { el.innerText = ''; });
+    updateUndoRedoButtons();
+  }
+
+  // ---------- Capture as image ----------
+  function flash(btn, text, cls = 'ok', restore = 'Copy as image') {
+    btn.textContent = text;
+    if (cls) btn.classList.add(cls);
+    setTimeout(() => {
+      btn.textContent = restore;
+      if (cls) btn.classList.remove(cls);
+    }, 1800);
+  }
+
+  async function copyAsImage() {
+    const btn = $('copyBtn');
+    const target = $('template');
+    btn.disabled = true;
+    btn.textContent = 'Capturing…';
+
+    try {
+      // Avoid rendering caret/focus rings
+      const editables = document.querySelectorAll('.card-content');
+      editables.forEach(el => el.setAttribute('contenteditable', 'false'));
+
+      const renderCanvas = await html2canvas(target, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+      });
+
+      editables.forEach(el => el.setAttribute('contenteditable', 'true'));
+
+      renderCanvas.toBlob(async (blob) => {
+        try {
+          if (navigator.clipboard && window.ClipboardItem) {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            btn.disabled = false;
+            flash(btn, 'Copied!');
+            return;
+          }
+          throw new Error('Clipboard API unavailable');
+        } catch (err) {
+          // Fallback: download the PNG
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'similar-different.png';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1500);
+          btn.disabled = false;
+          flash(btn, 'Downloaded');
+        }
+      }, 'image/png');
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Copy as image';
+      alert('Could not capture image: ' + err.message);
+    }
+  }
+
+  // ---------- Purpose / setup ----------
+  function applyPurpose(purpose) {
+    if (!PURPOSES[purpose]) purpose = 'A4';
+    currentPurpose = purpose;
+    try { localStorage.setItem(PURPOSE_STORAGE_KEY, purpose); } catch (e) { /* ignore */ }
+
+    const cfg = PURPOSES[purpose];
+    $('purposeLabel').textContent = cfg.label;
+    $('exportDescription').textContent = `Currently set up for ${cfg.label}.`;
+    $('printSub').textContent = cfg.isPaper
+      ? `Opens a PDF in a new tab sized for ${purpose}, with the print dialog ready`
+      : 'Opens a PDF in a new tab with the print dialog (paper size adjustable in the dialog)';
+
+    // Update @page size for native window.print() fallback
+    let style = document.getElementById('print-page-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'print-page-style';
+      document.head.appendChild(style);
+    }
+    style.textContent = `@media print { @page { size: ${cfg.pageSizeCss}; margin: 1cm; } }`;
+
+    checkCardWarning();
+  }
+
+  function showPurposeModal() { $('purposeModal').classList.remove('hidden'); }
+  function hidePurposeModal() { $('purposeModal').classList.add('hidden'); }
+
+  function showExportModal() { $('exportModal').classList.remove('hidden'); }
+  function hideExportModal() { $('exportModal').classList.add('hidden'); }
+
+  // ---------- Card count warning ----------
+  function checkCardWarning() {
+    const { leftN, centerN, rightN } = getInputs();
+    const max = Math.max(leftN, centerN, rightN);
+    const el = $('cardWarning');
+    if (max > 4) {
+      const onSmall = currentPurpose === 'A5';
+      el.textContent = onSmall
+        ? `Heads up: ${max} cards on A5 paper will print very small and may be hard to write in. Consider A4/A3 or fewer cards.`
+        : `Heads up: more than 4 cards per column may print quite small, especially on smaller paper.`;
+      el.classList.add('show');
+    } else {
+      el.classList.remove('show');
+    }
+  }
+
+  // ---------- PDF generation ----------
+  async function buildPdf() {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      throw new Error('PDF library not loaded');
+    }
+    const cfg = PURPOSES[currentPurpose];
+    const target = $('template');
+
+    // Snapshot editable state and disable while rasterising (avoids caret artefacts)
+    const editables = Array.from(target.querySelectorAll('.card-content'));
+    const prevEditable = editables.map(el => el.getAttribute('contenteditable'));
+    editables.forEach(el => el.setAttribute('contenteditable', 'false'));
+
+    let renderCanvas;
+    try {
+      renderCanvas = await html2canvas(target, {
+        backgroundColor: '#ffffff',
+        scale: cfg.renderScale,
+        logging: false,
+        useCORS: true,
+      });
+    } finally {
+      editables.forEach((el, i) => el.setAttribute('contenteditable', prevEditable[i] || 'true'));
+    }
+
+    const imgData = renderCanvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: cfg.pdfFormat,
+    });
+
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 5; // mm — fills the page right up to a small bleed margin
+    const availW = pageW - margin * 2;
+    const availH = pageH - margin * 2;
+
+    const imgAspect = renderCanvas.width / renderCanvas.height;
+    const availAspect = availW / availH;
+    let w, h, x, y;
+    if (imgAspect > availAspect) {
+      w = availW; h = availW / imgAspect;
+      x = margin; y = margin + (availH - h) / 2;
+    } else {
+      h = availH; w = availH * imgAspect;
+      x = margin + (availW - w) / 2; y = margin;
+    }
+    pdf.addImage(imgData, 'PNG', x, y, w, h);
+    return pdf;
+  }
+
+  async function exportPrint() {
+    try {
+      const pdf = await buildPdf();
+      pdf.autoPrint();
+      const url = pdf.output('bloburl');
+      const w = window.open(url, '_blank');
+      if (!w) {
+        // Pop-up blocked — fall back to download
+        pdf.save('similar-different-print.pdf');
+        alert('Pop-up blocked. The PDF has been downloaded instead — open it and print from there.');
+      }
+    } catch (err) {
+      alert('Could not prepare the PDF: ' + err.message);
+    }
+  }
+
+  async function exportPdfDownload() {
+    try {
+      const pdf = await buildPdf();
+      pdf.save(`similar-different-${currentPurpose}.pdf`);
+    } catch (err) {
+      alert('Could not save the PDF: ' + err.message);
+    }
+  }
+
+  // ---------- Wire up ----------
+  ['topic1','topic2','leftN','centerN','rightN'].forEach(id =>
+    $(id).addEventListener('input', () => { render(); checkCardWarning(); })
+  );
+  $('modeType').addEventListener('click', () => setMode('type'));
+  $('modeDraw').addEventListener('click', () => setMode('draw'));
+  $('toolPen').addEventListener('click', () => setTool('pen'));
+  $('toolEraser').addEventListener('click', () => setTool('eraser'));
+  $('undoBtn').addEventListener('click', undo);
+  $('redoBtn').addEventListener('click', redo);
+  $('clearBtn').addEventListener('click', clearAll);
+  $('printBtn').addEventListener('click', showExportModal);
+  $('copyBtn').addEventListener('click', copyAsImage);
+  $('changePurposeBtn').addEventListener('click', showPurposeModal);
+
+  // Purpose modal: pick a target
+  $('purposeModal').querySelectorAll('button[data-purpose]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyPurpose(btn.dataset.purpose);
+      hidePurposeModal();
+    });
+  });
+
+  // Export modal
+  $('exportModal').querySelectorAll('button[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      hideExportModal();
+      if (action === 'print') exportPrint();
+      else if (action === 'pdf') exportPdfDownload();
+    });
+  });
+  $('exportCancelBtn').addEventListener('click', hideExportModal);
+  // Click outside modal to close (export only, not the initial purpose prompt)
+  $('exportModal').addEventListener('click', e => {
+    if (e.target === $('exportModal')) hideExportModal();
+  });
+
+  document.addEventListener('keydown', e => {
+    // Esc closes modals
+    if (e.key === 'Escape') {
+      if (!$('exportModal').classList.contains('hidden')) hideExportModal();
+    }
+    if (!drawMode) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    }
+  });
+
+  // ---------- Initial setup ----------
+  let storedPurpose = null;
+  try { storedPurpose = localStorage.getItem(PURPOSE_STORAGE_KEY); } catch (e) { /* ignore */ }
+  if (storedPurpose && PURPOSES[storedPurpose]) {
+    applyPurpose(storedPurpose);
+  } else {
+    showPurposeModal();
+    applyPurpose('A4'); // sensible default until user picks
+  }
+
+  updateUndoRedoButtons();
+  render();
+  checkCardWarning();
+</script>
+</body>
+</html>
